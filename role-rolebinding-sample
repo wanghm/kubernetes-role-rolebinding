@@ -1,0 +1,77 @@
+
+
+server=https://xx.xxx.xxx.xxx:443
+namespace=abcd
+service_account=jenkins
+cluster=xxxxxxxxxxxxxx
+
+
+jenkins-service-account.yml
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${service_account}
+  namespace: ${namespace}
+  
+
+ca=$(kubectl get secret/$service_account -n $namespace -o jsonpath='{.data.ca\.crt}')
+token=$(kubectl get secret/$service_account -n $namespace -o jsonpath='{.data.token}' | base64 --decode)
+#namespace=$(kubectl get secret/$service_account -n $namespace -o jsonpath='{.data.namespace}' | base64 --decode)
+
+
+# sa.kubeconfig
+echo "
+apiVersion: v1
+kind: Config
+clusters:
+- name: ${cluster}
+  cluster:
+    certificate-authority-data: ${ca}
+    server: ${server}
+contexts:
+- name: ${service_account}@${cluster}
+  context:
+    cluster: ${cluster}
+    namespace: ${namespace}
+    user: ${service_account}
+current-context: ${service_account}@${cluster}
+users:
+- name: ${service_account}
+  user:
+    token: ${token}
+" > sa.kubeconfig
+
+
+# jenkins-role.yaml
+echo "
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ${service_account}
+  namespace: ${namespace}
+rules:
+  - apiGroups: ["", "apps", "batch", "extensions"]
+#    resources: ["deployments", "services", "replicasets", "pods", "jobs", "cronjobs"]
+    resources: ["*"]
+    verbs: ["*"]
+" > jenkins-role.yaml
+
+
+# jenkins-rolebinding.yaml
+echo "
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ${service_account}
+  namespace: ${namespace}
+subjects:
+  - kind: User
+    name: ${service_account}
+    namespace: ${namespace}
+roleRef:
+  kind: Role
+  name: ${service_account}
+  apiGroup: rbac.authorization.k8s.io
+" > jenkins-rolebinding.yaml
+
